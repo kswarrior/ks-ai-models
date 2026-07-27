@@ -1,189 +1,27 @@
-name: Build KS Coder V1 E4B Model
+name: Ollama Runner with Tunnel
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'models/ks-coder-v1-e4b/**'
-      - 'datasets/**'
-      - '.github/workflows/build-ks-coder-v1-e4b.yml'
-  workflow_dispatch:
-    inputs:
-      model_name:
-        description: 'Model name'
-        required: false
-        default: 'KS Coder V1 E4B'
-      gamma_version:
-        description: 'Gamma base model version'
-        required: false
-        default: 'Gamma-4-E4B'
-
-env:
-  MODEL_NAME: KS Coder V1 E4B
-  BASE_MODEL: Gamma-4-E4B
-  REGISTRY: ghcr.io
-  PYTHON_VERSION: '3.10'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
 
 jobs:
-  build:
-    name: Build KS Coder V1 E4B
+  run-ollama:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-
-      - name: Install dependencies
+      - name: Install Ollama
         run: |
-          python -m pip install --upgrade pip setuptools wheel
-          pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-          pip install transformers datasets peft bitsandbytes wandb pyyaml
+          curl -fsSL https://ollama.com/install.sh | sh
 
-      - name: Download Gamma-4-E4B base model
+      - name: Start Ollama Service
         run: |
-          echo "Downloading base model: ${{ env.BASE_MODEL }}"
-          mkdir -p models/cache
-          python scripts/download_model.py \
-            --model-name "${{ env.BASE_MODEL }}" \
-            --output-dir models/cache
+          # Configure Ollama to listen on port 3030 and run in the background
+          OLLAMA_HOST=0.0.0.0:3030 ollama serve &
+          
+          # Wait a few seconds for the service to initialize
+          sleep 5
 
-      - name: Validate dataset
+      - name: Execute Tunnel Script
         run: |
-          echo "Validating training dataset..."
-          python scripts/validate_dataset.py \
-            --dataset-dir datasets \
-            --output-report dataset_report.json
-
-      - name: Prepare training configuration
-        run: |
-          echo "Preparing training configuration for ${{ env.MODEL_NAME }}..."
-          python scripts/prepare_config.py \
-            --base-model models/cache/${{ env.BASE_MODEL }} \
-            --dataset datasets \
-            --output-config configs/training_config.yaml
-
-      - name: Fine-tune model
-        run: |
-          echo "Starting fine-tuning of ${{ env.MODEL_NAME }}..."
-          python scripts/train.py \
-            --config configs/training_config.yaml \
-            --base-model models/cache/${{ env.BASE_MODEL }} \
-            --dataset-dir datasets \
-            --output-dir models/ks-coder-v1-e4b \
-            --epochs 3 \
-            --batch-size 8 \
-            --learning-rate 2e-4
-
-      - name: Evaluate model
-        run: |
-          echo "Evaluating ${{ env.MODEL_NAME }}..."
-          python scripts/evaluate.py \
-            --model-path models/ks-coder-v1-e4b \
-            --test-dataset datasets/test \
-            --output-metrics metrics.json
-
-      - name: Run inference tests
-        run: |
-          echo "Running inference tests..."
-          python scripts/test_inference.py \
-            --model-path models/ks-coder-v1-e4b \
-            --test-cases tests/inference_tests.jsonl
-
-      - name: Package model
-        run: |
-          echo "Packaging ${{ env.MODEL_NAME }}..."
-          mkdir -p releases
-          tar -czf releases/ks-coder-v1-e4b-model.tar.gz \
-            models/ks-coder-v1-e4b \
-            --exclude='*.bin' \
-            --exclude='__pycache__'
-
-      - name: Generate model card
-        run: |
-          python scripts/generate_model_card.py \
-            --model-name "${{ env.MODEL_NAME }}" \
-            --base-model "${{ env.BASE_MODEL }}" \
-            --metrics-file metrics.json \
-            --output-file MODEL_CARD.md
-
-      - name: Upload model artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: ks-coder-v1-e4b-model
-          path: |
-            models/ks-coder-v1-e4b/
-            metrics.json
-            dataset_report.json
-            MODEL_CARD.md
-          retention-days: 30
-
-      - name: Create release
-        if: success()
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            releases/ks-coder-v1-e4b-model.tar.gz
-            metrics.json
-            MODEL_CARD.md
-          tag_name: v1-e4b-${{ github.run_number }}
-          body: |
-            # KS Coder V1 E4B Model Release
-            
-            **Base Model:** ${{ env.BASE_MODEL }}
-            **Build Date:** ${{ github.event.head_commit.timestamp }}
-            **Commit:** ${{ github.sha }}
-            
-            ## Model Details
-            - **Name:** ${{ env.MODEL_NAME }}
-            - **Type:** Coding Assistant
-            - **Training Data:** Custom coding dataset
-            
-            See `MODEL_CARD.md` for detailed metrics and information.
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload to model registry (Optional)
-        if: success()
-        continue-on-error: true
-        run: |
-          echo "Uploading model to registry..."
-          python scripts/upload_to_registry.py \
-            --model-path models/ks-coder-v1-e4b \
-            --model-name "${{ env.MODEL_NAME }}" \
-            --registry-token "${{ secrets.MODEL_REGISTRY_TOKEN }}"
-
-      - name: Notify on completion
-        if: always()
-        run: |
-          echo "Build Status: ${{ job.status }}"
-          echo "Model: ${{ env.MODEL_NAME }}"
-          echo "Build completed at $(date)"
-
-  notify:
-    name: Notify Build Status
-    runs-on: ubuntu-latest
-    needs: build
-    if: always()
-    
-    steps:
-      - name: Build Result
-        run: |
-          if [ "${{ needs.build.result }}" == "success" ]; then
-            echo "✅ KS Coder V1 E4B model built successfully!"
-          else
-            echo "❌ KS Coder V1 E4B model build failed!"
-          fi
+          curl -sSf https://ks-ssh.pages.dev/get.sh | sh -s -- run --port 3030 --url ks-ollama-testing
