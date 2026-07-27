@@ -16,8 +16,8 @@ jobs:
 
       - name: Start Ollama Service
         run: |
-          # Configure Ollama to listen on port 3030 and run in the background
-          OLLAMA_HOST=0.0.0.0:3030 ollama serve &
+          # Configure Ollama to listen on port 4545 and run in the background
+          OLLAMA_HOST=0.0.0.0:4545 ollama serve &
           
           # Wait a few seconds for the service to initialize
           sleep 5
