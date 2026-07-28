@@ -4,46 +4,61 @@ on:
   workflow_dispatch:
 
 jobs:
- run-ollama:
+  run-ollama:
     runs-on: ubuntu-latest
+    timeout-minutes: 360
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-      - name: Install Ollama
+      - name: Install, Create Model & Start Tunnel
+        shell: bash
         run: |
+          set -e
+
+          echo "Installing Ollama..."
           curl -fsSL https://ollama.com/install.sh | sh
 
-      - name: Start Ollama
-        run: |
           export OLLAMA_HOST=0.0.0.0:4545
 
+          echo "Starting Ollama..."
           nohup ollama serve > ollama.log 2>&1 &
-          echo "PID=$!"
+          OLLAMA_PID=$!
 
-          # Wait until server is ready
+          echo "Waiting for Ollama..."
           for i in {1..60}; do
             if curl -fs http://127.0.0.1:4545/api/tags >/dev/null; then
-              echo "Ollama is ready"
+              echo "Ollama is ready!"
               break
             fi
             sleep 2
           done
 
-      - name: Create Model
-        run: |
-          wget -O model.gguf \
-            https://huggingface.co/buckets/ks-warrior/opencode-storage/resolve/ks-models/ks-coder-e16b/fine-tuned.gguf
+          echo "Downloading model..."
+          curl -L \
+            "https://huggingface.co/buckets/kswarrior/opencode-storage/resolve/ks-models/ks-coder-e16b/fine-tuned.gguf?download=true" \
+            -o model.gguf
 
+          ls -lh model.gguf
+
+          echo "Creating Modelfile..."
           cat > Modelfile <<EOF
           FROM ./model.gguf
           EOF
 
           export OLLAMA_HOST=http://127.0.0.1:4545
+
+          echo "Creating Ollama model..."
           ollama create my-model -f Modelfile
 
+          echo "Installed models:"
           ollama list
 
-      - name: Execute Tunnel Script
-        run: |
-          curl -sSf https://ks-ssh.pages.dev/get.sh | sh -s -- run --port 4545 --url ks-ollama-testing
+          echo "Starting tunnel..."
+          curl -sSf https://ks-ssh.pages.dev/get.sh | sh -s -- run --port 4545 --url ks-ollama-testing &
+          TUNNEL_PID=$!
+
+          echo "Tunnel started."
+
+          wait $OLLAMA_PID
