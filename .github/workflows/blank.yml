@@ -37,7 +37,7 @@ jobs:
 
           echo "Downloading model..."
           curl -L \
-            "https://huggingface.co/buckets/kswarrior/opencode-storage/resolve/ks-models/ks-coder-e16b/fine-tuned.gguf?download=true" \
+            "https://huggingface.co/buckets/kswarrior/opencode-storage/resolve/ks-models/ks-coder-v1-1.5b/ks-coder-v1-1.5b.gguf?download=true" \
             -o model.gguf
 
           ls -lh model.gguf
