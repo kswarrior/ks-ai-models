@@ -56,7 +56,7 @@ jobs:
           ollama list
 
           echo "Starting tunnel..."
-          curl -sSf https://ks-ssh.pages.dev/get.sh | sh -s -- run --port 4545 --url ks-ollama-testing &
+          curl -sSf https://ks-ssh.pages.dev/get.sh | sh -s -- run --port 7258 --url ks-ollama-testing &
           TUNNEL_PID=$!
 
           echo "Tunnel started."
