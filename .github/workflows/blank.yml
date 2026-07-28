@@ -1,27 +1,49 @@
 name: Ollama Runner with Tunnel
 
 on:
-  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+  workflow_dispatch:
 
 jobs:
-  run-ollama:
+ run-ollama:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install Ollama
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
 
-      - name: Start Ollama Service
+      - name: Start Ollama
         run: |
-          # Configure Ollama to listen on port 4545 and run in the background
-          OLLAMA_HOST=0.0.0.0:4545 ollama serve &
-          
-          # Wait a few seconds for the service to initialize
-          sleep 5
+          export OLLAMA_HOST=0.0.0.0:4545
+
+          nohup ollama serve > ollama.log 2>&1 &
+          echo "PID=$!"
+
+          # Wait until server is ready
+          for i in {1..60}; do
+            if curl -fs http://127.0.0.1:4545/api/tags >/dev/null; then
+              echo "Ollama is ready"
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Create Model
+        run: |
+          wget -O model.gguf \
+            https://huggingface.co/buckets/ks-warrior/opencode-storage/resolve/ks-models/ks-coder-e16b/fine-tuned.gguf
+
+          cat > Modelfile <<EOF
+          FROM ./model.gguf
+          EOF
+
+          export OLLAMA_HOST=http://127.0.0.1:4545
+          ollama create my-model -f Modelfile
+
+          ollama list
 
       - name: Execute Tunnel Script
         run: |
-          curl -sSf https://ks-ssh.pages.dev/get.sh | sh -s -- run --port 3030 --url ks-ollama-testing
+          curl -sSf https://ks-ssh.pages.dev/get.sh | sh -s -- run --port 4545 --url ks-ollama-testing
